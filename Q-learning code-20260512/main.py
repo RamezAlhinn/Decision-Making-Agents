@@ -15,10 +15,12 @@ In this case, it is better to use a random initialization.
 """
 random_initialization = True  # If True, the agent will be initialized randomly in the environment
 
+# Hyperparameters:
+# ----------------
+epsilon = 1  # Exploration rate
 learning_rate = 0.01  # Learning rate
-gamma = 0.99  # Discount factor
-epsilon = 1.0  # Exploration rate
-epsilon_min = 0.1  # Minimum exploration rate
+gamma = 0.99  # Discount factor for future rewards with the temporal difference method 0 is imediate reward, 1 is future reward
+epsilon_min = 0.1  # Minimum exploration rate, its not in the update rule, but it is used to limit the exploration rate to a minimum value. 1 exploration, 0 exploitation
 epsilon_decay = 0.995  # Decay rate for exploration
 no_episodes = 20_000  # Number of episodes
 

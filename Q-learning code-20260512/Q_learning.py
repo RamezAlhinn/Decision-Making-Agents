@@ -26,6 +26,7 @@ def train_q_learning(env,
     #! Step 1: Run the algorithm for fixed number of episodes
     #! -------
     for episode in range(no_episodes):
+        # so it starts in random position each episode
         state, _ = env.reset()
 
         state = tuple(state)
