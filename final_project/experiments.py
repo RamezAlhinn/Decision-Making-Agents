@@ -45,12 +45,15 @@
 # Large α amplifies the TD error correction; small α dampens it.
 # =============================================================================
 
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 from env import DeliveryRobotEnv
 from q_learning import QLearningAgent, train_and_record
+
+HERE = Path(__file__).parent   # always saves outputs into final_project/
 
 # ---------------------------------------------------------------------------
 # Shared settings — kept constant across ALL experiments
@@ -156,8 +159,8 @@ def run_experiment_A():
     ax2.legend(fontsize=9, loc="upper right")
 
     plt.tight_layout()
-    plt.savefig("experiment_A_epsilon.png", dpi=150, bbox_inches="tight")
-    print("\nPlot saved → experiment_A_epsilon.png")
+    plt.savefig(HERE / "experiment_A_epsilon.png", dpi=150, bbox_inches="tight")
+    print(f"\nPlot saved → {HERE / 'experiment_A_epsilon.png'}")
     plt.close()
 
 
@@ -218,8 +221,8 @@ def run_experiment_B():
                 arrowprops=dict(arrowstyle="->", color="tomato", lw=0.8))
 
     plt.tight_layout()
-    plt.savefig("experiment_B_alpha.png", dpi=150, bbox_inches="tight")
-    print("\nPlot saved → experiment_B_alpha.png")
+    plt.savefig(HERE / "experiment_B_alpha.png", dpi=150, bbox_inches="tight")
+    print(f"\nPlot saved → {HERE / 'experiment_B_alpha.png'}")
     plt.close()
 
 

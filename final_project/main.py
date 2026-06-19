@@ -1,5 +1,8 @@
+from pathlib import Path
 from env import DeliveryRobotEnv
 from q_learning import QLearningAgent, train, visualize
+
+HERE = Path(__file__).parent   # always points to final_project/
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 do_train        = True
@@ -7,7 +10,7 @@ do_visualize    = True
 render_training = False   # Set True to watch the robot during training (slow)
 random_start    = True    # Drop agent at a random non-obstacle cell each episode
 
-q_table_path = "q_table.npy"
+q_table_path = HERE / "q_table.npy"
 
 # ── Hyperparameters ───────────────────────────────────────────────────────────
 no_episodes   = 30_000
@@ -38,5 +41,5 @@ else:
 
 if do_visualize:
     env = DeliveryRobotEnv()
-    visualize(agent, env)
+    visualize(agent, env, output_dir=HERE)
     env.close()

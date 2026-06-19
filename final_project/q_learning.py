@@ -95,7 +95,7 @@ def train_and_record(env, agent, no_episodes):
     return rewards
 
 
-def visualize(agent, env):
+def visualize(agent, env, output_dir=None):
     """
     Two side-by-side grid plots showing the greedy policy learned by the agent.
 
@@ -216,6 +216,9 @@ def visualize(agent, env):
     )
 
     plt.tight_layout()
-    plt.savefig("policy_plot.png", dpi=150, bbox_inches="tight")
-    print("Policy plot saved → policy_plot.png")
+    from pathlib import Path
+    out = Path(output_dir) if output_dir else Path(__file__).parent
+    path = out / "policy_plot.png"
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    print(f"Policy plot saved → {path}")
     plt.show()
