@@ -92,88 +92,89 @@ def train(env, agent, no_episodes, render=False):
 
 def visualize(agent, env):
     """
-    One figure with two side-by-side greedy-policy plots:
-      Left  — Phase 1: robot has no package, heading to pick it up (P)
-      Right — Phase 2: robot is carrying the package, heading to customer (C)
-
-    Each cell shows:
-      arrow  — the greedy action the agent would take
-      number — the max Q-value for that cell
-    Special cells are coloured and labelled so they stand out:
-      P (yellow)  — package location
-      C (green)   — customer / delivery goal
-      X (red)     — traffic / danger (episode ends with -15)
-      W (gray)    — wall (movement blocked)
+    Two side-by-side greedy-policy plots (one per phase).
+    Each free cell shows: arrow (greedy action) + max Q-value.
+    All 6 special cell types are colour-coded to match the pygame render.
     """
-    q_table     = agent.q_table        # (grid, grid, 2, 4)
+    from matplotlib.patches import Patch
+
+    q_table     = agent.q_table    # (grid, grid, 2, 4)
     grid_size   = q_table.shape[0]
     arrows      = {0: "↑", 1: "↓", 2: "→", 3: "←"}
 
     package_rc  = tuple(env.package)
     customer_rc = tuple(env.customer)
-    dangers     = [tuple(d) for d in env.danger_states]
-    walls       = [tuple(w) for w in env.wall_states]
+    walls       = {tuple(w) for w in env.wall_states}
+    dangers     = {tuple(d) for d in env.danger_states}
+    teleports   = set(env.teleport_map.keys())
+    traps       = {tuple(t) for t in env.trap_states}
+    bonuses     = {tuple(b) for b in env.bonus_states}
 
-    special = set(dangers) | set(walls) | {package_rc, customer_rc}
+    special = walls | dangers | teleports | traps | bonuses | {package_rc, customer_rc}
 
-    phase_titles = ["Phase 1: Go fetch the package  (P)",
-                    "Phase 2: Deliver to customer  (C)"]
+    # Colour palette (RGB 0-1) matching the pygame render
+    CELL_STYLE = {
+        "wall":     ((0.27, 0.27, 0.27), "W", "white"),
+        "danger":   ((0.86, 0.20, 0.20), "X", "white"),
+        "teleport": ((0.55, 0.24, 0.78), "T", "white"),
+        "trap":     ((0.90, 0.55, 0.12), "Z", "white"),
+        "bonus":    ((0.00, 0.75, 0.78), "B", "white"),
+        "package":  ((1.00, 0.82, 0.00), "P", "black"),
+        "customer": ((0.20, 0.75, 0.20), "C", "white"),
+    }
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-    fig.suptitle("Learned Greedy Policy", fontsize=14, fontweight="bold")
+    def cell_type(rc):
+        if rc in walls:     return "wall"
+        if rc in dangers:   return "danger"
+        if rc in teleports: return "teleport"
+        if rc in traps:     return "trap"
+        if rc in bonuses:   return "bonus"
+        if rc == package_rc:  return "package"
+        if rc == customer_rc: return "customer"
+        return None
+
+    phase_titles = ["Phase 1: Fetch the Package  (P)",
+                    "Phase 2: Deliver to Customer  (C)"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+    fig.suptitle("Learned Greedy Policy — Q-values & Optimal Actions",
+                 fontsize=14, fontweight="bold")
 
     for phase, ax in enumerate(axes):
-        phase_q       = q_table[:, :, phase, :]        # (grid, grid, 4)
+        phase_q       = q_table[:, :, phase, :]    # (grid, grid, 4)
         best_actions  = np.argmax(phase_q, axis=2)
         best_q_values = np.max(phase_q, axis=2)
 
-        # Mask special cells so the heatmap doesn't colour them
         mask = np.zeros((grid_size, grid_size), dtype=bool)
         for rc in special:
             mask[rc] = True
 
+        free_vals = best_q_values[~mask]
         sns.heatmap(best_q_values, annot=False, cmap="Blues",
                     ax=ax, cbar=True, mask=mask,
                     linewidths=0.5, linecolor="lightgray",
-                    vmin=best_q_values[~mask].min() if (~mask).any() else 0,
-                    vmax=best_q_values[~mask].max() if (~mask).any() else 1)
+                    vmin=free_vals.min() if free_vals.size else 0,
+                    vmax=free_vals.max() if free_vals.size else 1)
 
-        # Draw every cell
         for row in range(grid_size):
             for col in range(grid_size):
                 rc  = (row, col)
                 x   = col + 0.5
                 y   = row + 0.5
+                ct  = cell_type(rc)
 
-                if rc in walls:
+                if ct is not None:
+                    color, label, text_color = CELL_STYLE[ct]
                     ax.add_patch(plt.Rectangle((col, row), 1, 1,
-                                 color=(0.27, 0.27, 0.27), zorder=2))
-                    ax.text(x, y, "W", color="white", ha="center", va="center",
+                                 color=color, zorder=2))
+                    ax.text(x, y, label, color=text_color,
+                            ha="center", va="center",
                             fontsize=11, fontweight="bold", zorder=3)
-
-                elif rc in dangers:
-                    ax.add_patch(plt.Rectangle((col, row), 1, 1,
-                                 color=(0.86, 0.20, 0.20), zorder=2))
-                    ax.text(x, y, "X", color="white", ha="center", va="center",
-                            fontsize=11, fontweight="bold", zorder=3)
-
-                elif rc == package_rc:
-                    ax.add_patch(plt.Rectangle((col, row), 1, 1,
-                                 color=(1.0, 0.82, 0.0), zorder=2))
-                    ax.text(x, y, "P", color="black", ha="center", va="center",
-                            fontsize=13, fontweight="bold", zorder=3)
-
-                elif rc == customer_rc:
-                    ax.add_patch(plt.Rectangle((col, row), 1, 1,
-                                 color=(0.20, 0.75, 0.20), zorder=2))
-                    ax.text(x, y, "C", color="white", ha="center", va="center",
-                            fontsize=13, fontweight="bold", zorder=3)
-
                 else:
                     q_val = best_q_values[row, col]
                     ax.text(x, y - 0.15, arrows[best_actions[row, col]],
                             color="black", ha="center", va="center",
-                            fontsize=15, fontweight="bold", zorder=3)
+                            fontsize=14, fontweight="bold", zorder=3)
                     ax.text(x, y + 0.25, f"{q_val:.1f}",
                             color="dimgray", ha="center", va="center",
                             fontsize=7, zorder=3)
@@ -182,16 +183,17 @@ def visualize(agent, env):
         ax.set_xlabel("Column")
         ax.set_ylabel("Row")
 
-    # Legend
-    from matplotlib.patches import Patch
     legend = [
-        Patch(color=(1.0, 0.82, 0.0),    label="P — Package"),
-        Patch(color=(0.20, 0.75, 0.20),  label="C — Customer"),
-        Patch(color=(0.86, 0.20, 0.20),  label="X — Traffic (danger)"),
-        Patch(color=(0.27, 0.27, 0.27),  label="W — Wall (blocked)"),
+        Patch(color=(0.27, 0.27, 0.27), label="W — Wall (blocks movement)"),
+        Patch(color=(0.86, 0.20, 0.20), label="X — Danger (episode ends, −15)"),
+        Patch(color=(0.55, 0.24, 0.78), label="T — Teleport (warps robot, −2)"),
+        Patch(color=(0.90, 0.55, 0.12), label="Z — Trap (extra step lost, −3)"),
+        Patch(color=(0.00, 0.75, 0.78), label="B — Bonus (one-time +3)"),
+        Patch(color=(1.00, 0.82, 0.00), label="P — Package (sub-goal, +5)"),
+        Patch(color=(0.20, 0.75, 0.20), label="C — Customer (goal, +20)"),
     ]
     fig.legend(handles=legend, loc="lower center", ncol=4,
-               frameon=True, fontsize=9, bbox_to_anchor=(0.5, -0.04))
+               frameon=True, fontsize=9, bbox_to_anchor=(0.5, -0.06))
 
     plt.tight_layout()
     plt.show()
