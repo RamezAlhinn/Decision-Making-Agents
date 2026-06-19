@@ -92,13 +92,23 @@ def train(env, agent, no_episodes, render=False):
 
 def visualize(agent, env):
     """
-    Two side-by-side greedy-policy plots (one per phase).
-    Each free cell shows: arrow (greedy action) + max Q-value.
-    All 6 special cell types are colour-coded to match the pygame render.
+    Two side-by-side grid plots showing the greedy policy learned by the agent.
+
+    Left plot  — Phase 1: robot has no package, navigating toward P.
+    Right plot — Phase 2: robot is carrying the package, navigating toward C.
+
+    Reading the plot
+    ----------------
+    - Blue shading : how valuable that cell is (darker = higher Q-value).
+      Brighter blue means the agent strongly prefers to be there.
+    - Arrow        : the best action the agent would take from that cell
+                     (↑ Up, ↓ Down, → Right, ← Left).
+    - Number       : the exact max Q-value for that cell.
+    - Coloured cells are special states — see the legend below the plots.
     """
     from matplotlib.patches import Patch
 
-    q_table     = agent.q_table    # (grid, grid, 2, 4)
+    q_table     = agent.q_table          # shape: (grid, grid, 2, 4)
     grid_size   = q_table.shape[0]
     arrows      = {0: "↑", 1: "↓", 2: "→", 3: "←"}
 
@@ -106,94 +116,101 @@ def visualize(agent, env):
     customer_rc = tuple(env.customer)
     walls       = {tuple(w) for w in env.wall_states}
     dangers     = {tuple(d) for d in env.danger_states}
-    teleports   = set(env.teleport_map.keys())
-    traps       = {tuple(t) for t in env.trap_states}
     bonuses     = {tuple(b) for b in env.bonus_states}
+    special     = walls | dangers | bonuses | {package_rc, customer_rc}
 
-    special = walls | dangers | teleports | traps | bonuses | {package_rc, customer_rc}
-
-    # Colour palette (RGB 0-1) matching the pygame render
+    # Colours match the pygame render exactly
     CELL_STYLE = {
         "wall":     ((0.27, 0.27, 0.27), "W", "white"),
-        "danger":   ((0.86, 0.20, 0.20), "X", "white"),
-        "teleport": ((0.55, 0.24, 0.78), "T", "white"),
-        "trap":     ((0.90, 0.55, 0.12), "Z", "white"),
-        "bonus":    ((0.00, 0.75, 0.78), "B", "white"),
-        "package":  ((1.00, 0.82, 0.00), "P", "black"),
-        "customer": ((0.20, 0.75, 0.20), "C", "white"),
+        "danger":   ((0.82, 0.20, 0.20), "X", "white"),
+        "bonus":    ((0.00, 0.73, 0.76), "B", "white"),
+        "package":  ((0.94, 0.78, 0.00), "P", "black"),
+        "customer": ((0.20, 0.71, 0.20), "C", "white"),
     }
 
     def cell_type(rc):
-        if rc in walls:     return "wall"
-        if rc in dangers:   return "danger"
-        if rc in teleports: return "teleport"
-        if rc in traps:     return "trap"
-        if rc in bonuses:   return "bonus"
+        if rc in walls:       return "wall"
+        if rc in dangers:     return "danger"
+        if rc in bonuses:     return "bonus"
         if rc == package_rc:  return "package"
         if rc == customer_rc: return "customer"
         return None
 
-    phase_titles = ["Phase 1: Fetch the Package  (P)",
-                    "Phase 2: Deliver to Customer  (C)"]
+    titles = [
+        "Phase 1 — Fetch the Package (P)\n"
+        "Agent has no package; arrows show the path it would take to P",
+        "Phase 2 — Deliver to Customer (C)\n"
+        "Agent is carrying the package; arrows show the path it would take to C",
+    ]
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
-    fig.suptitle("Learned Greedy Policy — Q-values & Optimal Actions",
-                 fontsize=14, fontweight="bold")
+    fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+    fig.suptitle(
+        "Learned Greedy Policy  —  Arrows = optimal action, Colour = Q-value",
+        fontsize=13, fontweight="bold", y=1.01
+    )
 
     for phase, ax in enumerate(axes):
-        phase_q       = q_table[:, :, phase, :]    # (grid, grid, 4)
-        best_actions  = np.argmax(phase_q, axis=2)
-        best_q_values = np.max(phase_q, axis=2)
+        phase_q   = q_table[:, :, phase, :]        # (grid, grid, 4)
+        best_act  = np.argmax(phase_q, axis=2)
+        best_q    = np.max(phase_q, axis=2)
 
+        # Mask special cells from the heatmap colouring
         mask = np.zeros((grid_size, grid_size), dtype=bool)
         for rc in special:
             mask[rc] = True
 
-        free_vals = best_q_values[~mask]
-        sns.heatmap(best_q_values, annot=False, cmap="Blues",
-                    ax=ax, cbar=True, mask=mask,
-                    linewidths=0.5, linecolor="lightgray",
-                    vmin=free_vals.min() if free_vals.size else 0,
-                    vmax=free_vals.max() if free_vals.size else 1)
+        free = best_q[~mask]
+        sns.heatmap(
+            best_q, ax=ax, cmap="Blues", mask=mask,
+            cbar=True, linewidths=0.8, linecolor="lightgray",
+            vmin=free.min() if free.size else 0,
+            vmax=free.max() if free.size else 1,
+            annot=False
+        )
 
         for row in range(grid_size):
             for col in range(grid_size):
-                rc  = (row, col)
-                x   = col + 0.5
-                y   = row + 0.5
-                ct  = cell_type(rc)
+                rc = (row, col)
+                x, y = col + 0.5, row + 0.5
+                ct = cell_type(rc)
 
                 if ct is not None:
-                    color, label, text_color = CELL_STYLE[ct]
+                    color, label, tc = CELL_STYLE[ct]
                     ax.add_patch(plt.Rectangle((col, row), 1, 1,
-                                 color=color, zorder=2))
-                    ax.text(x, y, label, color=text_color,
-                            ha="center", va="center",
-                            fontsize=11, fontweight="bold", zorder=3)
+                                               color=color, zorder=2))
+                    ax.text(x, y, label, color=tc, ha="center", va="center",
+                            fontsize=13, fontweight="bold", zorder=3)
                 else:
-                    q_val = best_q_values[row, col]
-                    ax.text(x, y - 0.15, arrows[best_actions[row, col]],
+                    # Arrow (large, centred) + Q-value (small, below)
+                    ax.text(x, y - 0.12, arrows[best_act[row, col]],
                             color="black", ha="center", va="center",
-                            fontsize=14, fontweight="bold", zorder=3)
-                    ax.text(x, y + 0.25, f"{q_val:.1f}",
-                            color="dimgray", ha="center", va="center",
-                            fontsize=7, zorder=3)
+                            fontsize=16, fontweight="bold", zorder=3)
+                    ax.text(x, y + 0.28, f"{best_q[row, col]:.1f}",
+                            color="#444444", ha="center", va="center",
+                            fontsize=7.5, zorder=3)
 
-        ax.set_title(phase_titles[phase], fontsize=11)
-        ax.set_xlabel("Column")
-        ax.set_ylabel("Row")
+        ax.set_title(titles[phase], fontsize=10, pad=8)
+        ax.set_xlabel("Column", fontsize=9)
+        ax.set_ylabel("Row", fontsize=9)
+        ax.tick_params(labelsize=8)
 
-    legend = [
-        Patch(color=(0.27, 0.27, 0.27), label="W — Wall (blocks movement)"),
-        Patch(color=(0.86, 0.20, 0.20), label="X — Danger (episode ends, −15)"),
-        Patch(color=(0.55, 0.24, 0.78), label="T — Teleport (warps robot, −2)"),
-        Patch(color=(0.90, 0.55, 0.12), label="Z — Trap (extra step lost, −3)"),
-        Patch(color=(0.00, 0.75, 0.78), label="B — Bonus (one-time +3)"),
-        Patch(color=(1.00, 0.82, 0.00), label="P — Package (sub-goal, +5)"),
-        Patch(color=(0.20, 0.75, 0.20), label="C — Customer (goal, +20)"),
+    # Legend in its own clearly separated row below both plots
+    legend_handles = [
+        Patch(color=(0.27, 0.27, 0.27), label="W  Wall — movement blocked (−0.05)"),
+        Patch(color=(0.82, 0.20, 0.20), label="X  Danger — episode ends (−15)"),
+        Patch(color=(0.00, 0.73, 0.76), label="B  Bonus — one-time reward (+3)"),
+        Patch(color=(0.94, 0.78, 0.00), label="P  Package — sub-goal (+5)"),
+        Patch(color=(0.20, 0.71, 0.20), label="C  Customer — terminal goal (+20)"),
     ]
-    fig.legend(handles=legend, loc="lower center", ncol=4,
-               frameon=True, fontsize=9, bbox_to_anchor=(0.5, -0.06))
+    fig.legend(
+        handles=legend_handles,
+        loc="lower center", ncol=5,
+        frameon=True, fontsize=9,
+        bbox_to_anchor=(0.5, -0.08),
+        title="Special cells", title_fontsize=9
+    )
 
     plt.tight_layout()
+    plt.savefig("policy_plot.png", dpi=150, bbox_inches="tight")
+    print("Policy plot saved → policy_plot.png")
     plt.show()

@@ -2,32 +2,33 @@
 # env.py — Delivery Robot Environment
 # =============================================================================
 #
-# Theme: A robot navigates a 10x10 city grid to pick up a package (P) and
-# deliver it to a customer (C).  The task is split into two phases:
-#   Phase 1 — navigate to the package and pick it up
-#   Phase 2 — carry it to the customer
+# Theme
+# -----
+# A robot navigates an 8x8 city grid to complete a two-phase delivery task:
+#   Phase 1 — find the package (P) and pick it up
+#   Phase 2 — carry the package to the customer (C)
 #
-# The environment is fully deterministic and tabular, making it well-suited
-# for Q-learning with a discrete state space of size 10×10×2 (row, col,
-# has_package) and 4 actions (Up, Down, Right, Left).
+# The environment is fully deterministic: the same action in the same state
+# always produces the same next state and reward.  This makes it ideal for
+# tabular Q-learning, where the agent builds an exact Q-table indexed by
+# (row, col, has_package).
 #
-# Special state types — 20 individual cells, 6 distinct mechanics:
-# ----------------------------------------------------------------
-#   Symbol  Name       Description                                   Reward
-#   ------  ---------  -------------------------------------------   ------
-#   W       Wall       Blocks movement; robot stays in place         −0.05
-#   X       Danger     Traffic jam; entering ends the episode        −15
-#   T       Teleport   Warps robot to a fixed exit cell              −2
-#   Z       Trap       Construction site; consumes an extra step     −3
-#   B       Bonus      Fuel station; one-time pickup                 +3
-#   P       Package    Sub-goal; must be collected before delivery   +5
-#   C       Customer   Terminal goal; only valid when carrying P     +20
+# Special states — 11 individual cells, 4 distinct mechanics
+# ----------------------------------------------------------
+#   Symbol  Name      What happens when the robot enters            Reward
+#   ------  --------  ------------------------------------------   -------
+#   W       Wall      Movement blocked; robot stays in place        −0.05
+#   X       Danger    Traffic jam; episode ends immediately         −15
+#   B       Bonus     Fuel station; one-time reward, then normal    +3
+#   P       Package   Sub-goal; robot picks it up and enters Ph.2  +5
+#   C       Customer  Terminal goal; only counts if robot has P     +20
 #
-# Every normal step costs −0.01 to encourage short paths.
-# Timeout after 150 steps ends the episode with a −10 penalty.
+# Every normal step costs −0.01 to push the agent toward shorter paths.
+# Running out of steps (100 max) ends the episode with −10.
 #
-# Observation space: Box([row, col, has_package])  — shape (3,), dtype int32
-# Action space:      Discrete(4)  — 0=Up, 1=Down, 2=Right, 3=Left
+# State space : 8 × 8 × 2 = 128 discrete states
+#               (row 0-7, col 0-7, has_package 0/1)
+# Action space: Discrete(4) — 0=Up, 1=Down, 2=Right, 3=Left
 # =============================================================================
 
 import sys
@@ -36,89 +37,78 @@ import numpy as np
 import gymnasium as gym
 
 
-# Map configuration
-# -----------------
-GRID_SIZE = 10
-MAX_STEPS = 150
+# ---------------------------------------------------------------------------
+# Map layout  (8 × 8 grid, all coordinates are (row, col))
+# ---------------------------------------------------------------------------
+GRID_SIZE = 8
+MAX_STEPS = 100
 
-# (row, col) coordinates — all checked in step() in priority order
-WALL_CELLS    = [(1, 2), (2, 2), (3, 2), (4, 2),   # Left barrier
-                 (5, 6), (6, 6), (7, 6), (8, 6)]   # Right barrier
+#   4 walls forming an L-shaped barrier the robot must navigate around
+WALL_CELLS   = [(1, 3), (2, 3), (3, 3), (3, 4)]
 
-DANGER_CELLS  = [(2, 5), (4, 7), (6, 3), (8, 1)]   # Traffic jams — episode ends
+#   3 danger cells (traffic jams) scattered across the map
+DANGER_CELLS = [(2, 1), (4, 5), (6, 2)]
 
-TELEPORT_PAIRS = {                                  # key: entry cell → value: exit cell
-    (1, 7): (7, 2),
-    (4, 4): (8, 8),
-}
+#   2 bonus cells (fuel stations) — each gives +3 exactly once per episode
+BONUS_CELLS  = [(0, 5), (5, 7)]
 
-TRAP_CELLS    = [(3, 8), (7, 4)]                    # Construction sites — costs extra step
-
-BONUS_CELLS   = [(0, 5), (6, 9)]                    # Fuel stations — one-time +3
-
-PACKAGE_CELL  = (2, 8)                              # Pick up here first
-CUSTOMER_CELL = (9, 9)                              # Deliver here to win
-
-START_CELL    = (0, 0)                              # Robot always starts here
+PACKAGE_CELL  = (1, 6)   # robot must reach here first
+CUSTOMER_CELL = (7, 7)   # final delivery destination
+START_CELL    = (0, 0)   # robot always starts here
 
 
 class DeliveryRobotEnv(gym.Env):
+
     def __init__(self, random_start=False) -> None:
         super().__init__()
 
-        self.grid_size = GRID_SIZE
-        self.cell_size = 80
-        self.max_steps = MAX_STEPS
+        self.grid_size    = GRID_SIZE
+        self.cell_size    = 90          # pixels per cell in the pygame window
+        self.max_steps    = MAX_STEPS
         self.random_start = random_start
 
-        # Fixed locations
         self.start    = np.array(START_CELL)
         self.package  = np.array(PACKAGE_CELL)
         self.customer = np.array(CUSTOMER_CELL)
 
-        # Pre-convert special cells to numpy arrays for fast comparison
-        self.wall_states     = [np.array(w) for w in WALL_CELLS]
-        self.danger_states   = [np.array(d) for d in DANGER_CELLS]
-        self.teleport_map    = {k: np.array(v) for k, v in TELEPORT_PAIRS.items()}
-        self.trap_states     = [np.array(t) for t in TRAP_CELLS]
-        self.bonus_states    = [np.array(b) for b in BONUS_CELLS]
+        # Convert to numpy arrays once for fast comparison in step()
+        self.wall_states   = [np.array(c) for c in WALL_CELLS]
+        self.danger_states = [np.array(c) for c in DANGER_CELLS]
+        self.bonus_states  = [np.array(c) for c in BONUS_CELLS]
 
-        # Episode state (initialised properly in reset)
-        self.state            = None
-        self.has_package      = False
-        self.collected_bonus  = set()   # tracks which bonus cells are already spent
-        self.done             = False
-        self.reward           = 0
-        self.info             = {}
-        self.step_count       = 0
+        # Episode state — initialised properly in reset()
+        self.state           = None
+        self.has_package     = False
+        self.collected_bonus = set()    # which bonus cells are already spent
+        self.done            = False
+        self.reward          = 0
+        self.info            = {}
+        self.step_count      = 0
 
-        # Action space: 0=Up 1=Down 2=Right 3=Left
-        self.action_space = gym.spaces.Discrete(4)
-
-        # Observation: [row, col, has_package]
+        self.action_space = gym.spaces.Discrete(4)   # Up Down Right Left
         self.observation_space = gym.spaces.Box(
             low=np.array([0, 0, 0]),
-            high=np.array([self.grid_size - 1, self.grid_size - 1, 1]),
+            high=np.array([GRID_SIZE - 1, GRID_SIZE - 1, 1]),
             dtype=np.int32
         )
 
-        # Display
+        # pygame display
         pygame.init()
-        window_size = self.cell_size * self.grid_size
-        self.screen = pygame.display.set_mode((window_size, window_size))
-        pygame.display.set_caption("Delivery Robot")
-        self.font       = pygame.font.SysFont(None, 32)
+        side = self.cell_size * self.grid_size
+        self.screen     = pygame.display.set_mode((side, side))
+        self.font       = pygame.font.SysFont(None, 36)
         self.font_small = pygame.font.SysFont(None, 22)
+        pygame.display.set_caption("Delivery Robot")
 
 
-    # Method 1: reset
-    # ---------------
+    # -----------------------------------------------------------------------
+    # reset
+    # -----------------------------------------------------------------------
     def reset(self):
-        all_special = (
+        # Build the set of cells the robot cannot start on
+        blocked = (
             {tuple(w) for w in self.wall_states}   |
             {tuple(d) for d in self.danger_states} |
-            set(TELEPORT_PAIRS.keys())              |
-            {tuple(t) for t in self.trap_states}   |
             {tuple(b) for b in self.bonus_states}  |
             {PACKAGE_CELL, CUSTOMER_CELL}
         )
@@ -126,7 +116,7 @@ class DeliveryRobotEnv(gym.Env):
         if self.random_start:
             while True:
                 row, col = np.random.randint(0, self.grid_size, size=2)
-                if (row, col) not in all_special:
+                if (row, col) not in blocked:
                     self.state = np.array([row, col])
                     break
         else:
@@ -142,82 +132,69 @@ class DeliveryRobotEnv(gym.Env):
         return self._get_obs(), self.info
 
 
-    # Method 2: step
-    # --------------
+    # -----------------------------------------------------------------------
+    # step
+    # -----------------------------------------------------------------------
     def step(self, action):
         self.step_count += 1
 
-        # ── Move ──────────────────────────────────────────────────────────────
-        next_state = self.state.copy()
-        if action == 0 and self.state[0] > 0:
-            next_state[0] -= 1                          # Up
-        if action == 1 and self.state[0] < self.grid_size - 1:
-            next_state[0] += 1                          # Down
-        if action == 2 and self.state[1] < self.grid_size - 1:
-            next_state[1] += 1                          # Right
-        if action == 3 and self.state[1] > 0:
-            next_state[1] -= 1                          # Left
+        # 1. Compute intended next position
+        next_pos = self.state.copy()
+        if action == 0 and self.state[0] > 0:                       # Up
+            next_pos[0] -= 1
+        elif action == 1 and self.state[0] < self.grid_size - 1:    # Down
+            next_pos[0] += 1
+        elif action == 2 and self.state[1] < self.grid_size - 1:    # Right
+            next_pos[1] += 1
+        elif action == 3 and self.state[1] > 0:                     # Left
+            next_pos[1] -= 1
 
-        hits_wall = any(np.array_equal(next_state, w) for w in self.wall_states)
-        if not hits_wall:
-            self.state = next_state
-
-        # ── Evaluate new position ─────────────────────────────────────────────
-
-        # 1. Wall bump — wasted step
+        # 2. Check for wall — if blocked, robot stays; penalty for wasting a step
+        hits_wall = any(np.array_equal(next_pos, w) for w in self.wall_states)
         if hits_wall:
             self.reward = -0.05
             self.done   = False
-
-        # 2. Danger — episode ends immediately
-        elif any(np.array_equal(self.state, d) for d in self.danger_states):
-            self.reward = -15
-            self.done   = True
-
-        # 3. Teleport — warped to exit cell
-        elif tuple(self.state) in self.teleport_map:
-            self.state  = self.teleport_map[tuple(self.state)].copy()
-            self.reward = -2
-            self.done   = False
-
-        # 4. Trap — wastes an extra step
-        elif any(np.array_equal(self.state, t) for t in self.trap_states):
-            self.step_count += 1   # extra step consumed
-            self.reward      = -3
-            self.done        = False
-
-        # 5. Bonus — one-time fuel station reward
-        elif any(np.array_equal(self.state, b) for b in self.bonus_states):
-            key = tuple(self.state)
-            if key not in self.collected_bonus:
-                self.collected_bonus.add(key)
-                self.reward = +3
-            else:
-                self.reward = -0.01   # already collected, normal step
-            self.done = False
-
-        # 6. Package pickup (Phase 1 → Phase 2)
-        elif not self.has_package and np.array_equal(self.state, self.package):
-            self.has_package = True
-            self.reward      = +5
-            self.done        = False
-
-        # 7. Customer without package — no reward
-        elif not self.has_package and np.array_equal(self.state, self.customer):
-            self.reward = -0.01
-            self.done   = False
-
-        # 8. Delivery — terminal success
-        elif self.has_package and np.array_equal(self.state, self.customer):
-            self.reward = +20
-            self.done   = True
-
-        # 9. Normal move
         else:
-            self.reward = -0.01
-            self.done   = False
+            self.state = next_pos   # move the robot
 
-        # ── Timeout ───────────────────────────────────────────────────────────
+            # 3. Evaluate the new cell
+            if any(np.array_equal(self.state, d) for d in self.danger_states):
+                # Danger — episode ends with a large penalty
+                self.reward = -15
+                self.done   = True
+
+            elif any(np.array_equal(self.state, b) for b in self.bonus_states):
+                # Bonus — first visit gives +3; later visits are normal steps
+                key = tuple(self.state)
+                if key not in self.collected_bonus:
+                    self.collected_bonus.add(key)
+                    self.reward = +3
+                else:
+                    self.reward = -0.01
+                self.done = False
+
+            elif not self.has_package and np.array_equal(self.state, self.package):
+                # Package pickup — triggers Phase 2
+                self.has_package = True
+                self.reward      = +5
+                self.done        = False
+
+            elif self.has_package and np.array_equal(self.state, self.customer):
+                # Successful delivery — terminal state
+                self.reward = +20
+                self.done   = True
+
+            elif not self.has_package and np.array_equal(self.state, self.customer):
+                # Reached customer without package — no reward, keep going
+                self.reward = -0.01
+                self.done   = False
+
+            else:
+                # Normal step
+                self.reward = -0.01
+                self.done   = False
+
+        # 4. Timeout
         if not self.done and self.step_count >= self.max_steps:
             self.reward = -10
             self.done   = True
@@ -226,168 +203,112 @@ class DeliveryRobotEnv(gym.Env):
         return self._get_obs(), self.done, self.reward, self.info
 
 
-    # Method 3: render
-    # ----------------
+    # -----------------------------------------------------------------------
+    # render  (pygame)
+    # -----------------------------------------------------------------------
     def render(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
 
-        self.screen.fill((255, 255, 255))
+        self.screen.fill((245, 245, 245))
+        cs = self.cell_size
 
         # Grid lines
-        for col in range(self.grid_size):
-            for row in range(self.grid_size):
-                cell = pygame.Rect(col * self.cell_size, row * self.cell_size,
-                                   self.cell_size, self.cell_size)
-                pygame.draw.rect(self.screen, (200, 200, 200), cell, 1)
+        for r in range(self.grid_size):
+            for c in range(self.grid_size):
+                pygame.draw.rect(self.screen, (210, 210, 210),
+                                 pygame.Rect(c*cs, r*cs, cs, cs), 1)
 
-        # Walls — dark gray
+        def draw_cell(row, col, color, label, text_color=(255,255,255)):
+            rect = pygame.Rect(col*cs, row*cs, cs, cs)
+            pygame.draw.rect(self.screen, color, rect)
+            surf = self.font.render(label, True, text_color)
+            self.screen.blit(surf, surf.get_rect(center=rect.center))
+
         for w in self.wall_states:
-            r = pygame.Rect(w[1]*self.cell_size, w[0]*self.cell_size,
-                            self.cell_size, self.cell_size)
-            pygame.draw.rect(self.screen, (70, 70, 70), r)
-            self.screen.blit(self.font.render("W", True, (180,180,180)),
-                             (r.x+26, r.y+24))
-
-        # Danger — red
+            draw_cell(w[0], w[1], (70, 70, 70), "W", (180,180,180))
         for d in self.danger_states:
-            r = pygame.Rect(d[1]*self.cell_size, d[0]*self.cell_size,
-                            self.cell_size, self.cell_size)
-            pygame.draw.rect(self.screen, (220, 50, 50), r)
-            self.screen.blit(self.font.render("X", True, (255,255,255)),
-                             (r.x+28, r.y+24))
-
-        # Teleport entries — purple
-        for entry, exit_rc in self.teleport_map.items():
-            r = pygame.Rect(entry[1]*self.cell_size, entry[0]*self.cell_size,
-                            self.cell_size, self.cell_size)
-            pygame.draw.rect(self.screen, (140, 60, 200), r)
-            self.screen.blit(self.font.render("T", True, (255,255,255)),
-                             (r.x+28, r.y+24))
-            # Exit marker — lighter purple
-            r2 = pygame.Rect(exit_rc[1]*self.cell_size, exit_rc[0]*self.cell_size,
-                             self.cell_size, self.cell_size)
-            pygame.draw.rect(self.screen, (190, 140, 230), r2)
-            self.screen.blit(self.font_small.render("t", True, (255,255,255)),
-                             (r2.x+30, r2.y+28))
-
-        # Traps — orange
-        for t in self.trap_states:
-            r = pygame.Rect(t[1]*self.cell_size, t[0]*self.cell_size,
-                            self.cell_size, self.cell_size)
-            pygame.draw.rect(self.screen, (230, 140, 30), r)
-            self.screen.blit(self.font.render("Z", True, (255,255,255)),
-                             (r.x+28, r.y+24))
-
-        # Bonus — cyan
+            draw_cell(d[0], d[1], (210, 50, 50), "X")
         for b in self.bonus_states:
             if tuple(b) not in self.collected_bonus:
-                r = pygame.Rect(b[1]*self.cell_size, b[0]*self.cell_size,
-                                self.cell_size, self.cell_size)
-                pygame.draw.rect(self.screen, (0, 190, 200), r)
-                self.screen.blit(self.font.render("B", True, (255,255,255)),
-                                 (r.x+28, r.y+24))
-
-        # Package — yellow (only before pickup)
+                draw_cell(b[0], b[1], (0, 185, 195), "B")
         if not self.has_package:
-            r = pygame.Rect(self.package[1]*self.cell_size, self.package[0]*self.cell_size,
-                            self.cell_size, self.cell_size)
-            pygame.draw.rect(self.screen, (255, 210, 0), r)
-            self.screen.blit(self.font.render("P", True, (0,0,0)),
-                             (r.x+28, r.y+24))
-
-        # Customer — green
-        r = pygame.Rect(self.customer[1]*self.cell_size, self.customer[0]*self.cell_size,
-                        self.cell_size, self.cell_size)
-        pygame.draw.rect(self.screen, (50, 190, 50), r)
-        self.screen.blit(self.font.render("C", True, (255,255,255)),
-                         (r.x+28, r.y+24))
-
-        # Robot — blue
-        r = pygame.Rect(self.state[1]*self.cell_size, self.state[0]*self.cell_size,
-                        self.cell_size, self.cell_size)
-        pygame.draw.rect(self.screen, (30, 100, 220), r)
-        symbol = "R+" if self.has_package else "R"
-        self.screen.blit(self.font.render(symbol, True, (255,255,255)),
-                         (r.x+20, r.y+24))
+            draw_cell(self.package[0], self.package[1], (240, 200, 0), "P", (0,0,0))
+        draw_cell(self.customer[0], self.customer[1], (50, 180, 50), "C")
+        draw_cell(self.state[0], self.state[1], (30, 100, 210),
+                  "R+" if self.has_package else "R")
 
         # HUD
         hud = self.font_small.render(
             f"Steps: {self.step_count}/{self.max_steps}   "
-            f"Phase: {self.info.get('phase','')}   "
-            f"Bonus collected: {len(self.collected_bonus)}",
-            True, (50, 50, 50)
+            f"Phase: {'delivering' if self.has_package else 'fetching'}   "
+            f"Bonus: {len(self.collected_bonus)}/2",
+            True, (40, 40, 40)
         )
-        self.screen.blit(hud, (6, 4))
+        self.screen.blit(hud, (4, 4))
 
-        # Legend
-        legend_items = [
-            ((70,  70,  70),  "W = Wall"),
-            ((220, 50,  50),  "X = Danger"),
-            ((140, 60,  200), "T = Teleport"),
-            ((230, 140, 30),  "Z = Trap"),
-            ((0,   190, 200), "B = Bonus"),
-            ((255, 210, 0),   "P = Package"),
-            ((50,  190, 50),  "C = Customer"),
-            ((30,  100, 220), "R = Robot"),
+        # Legend (bottom strip)
+        items = [
+            ((70,70,70),    "W Wall"),
+            ((210,50,50),   "X Danger"),
+            ((0,185,195),   "B Bonus"),
+            ((240,200,0),   "P Package"),
+            ((50,180,50),   "C Customer"),
+            ((30,100,210),  "R Robot"),
         ]
-        legend_x = self.grid_size * self.cell_size - 160
-        for i, (color, text) in enumerate(legend_items):
-            pygame.draw.rect(self.screen, color,
-                             pygame.Rect(legend_x, 6 + i*18, 12, 12))
-            self.screen.blit(self.font_small.render(text, True, (30,30,30)),
-                             (legend_x+16, 4 + i*18))
+        lx = 4
+        for color, text in items:
+            pygame.draw.rect(self.screen, color, pygame.Rect(lx, cs*self.grid_size-20, 12, 12))
+            surf = self.font_small.render(text, True, (30,30,30))
+            self.screen.blit(surf, (lx+15, cs*self.grid_size-22))
+            lx += surf.get_width() + 28
 
-        pygame.time.wait(100)
+        pygame.time.wait(120)
         pygame.display.flip()
 
 
-    # Method 4: close
-    # ---------------
+    # -----------------------------------------------------------------------
+    # close
+    # -----------------------------------------------------------------------
     def close(self):
         pygame.quit()
 
 
-    # Helpers
-    # -------
+    # -----------------------------------------------------------------------
+    # helpers
+    # -----------------------------------------------------------------------
     def _get_obs(self):
         return np.array([self.state[0], self.state[1], int(self.has_package)],
                         dtype=np.int32)
 
     def _update_info(self):
         target = self.customer if self.has_package else self.package
-        self.info["phase"]              = "delivering" if self.has_package else "fetching"
-        self.info["steps_remaining"]    = self.max_steps - self.step_count
-        self.info["distance_to_target"] = float(np.sqrt(
-            (self.state[0] - target[0])**2 + (self.state[1] - target[1])**2
-        ))
-        self.info["bonus_collected"]    = len(self.collected_bonus)
+        self.info["phase"]           = "delivering" if self.has_package else "fetching"
+        self.info["steps_remaining"] = self.max_steps - self.step_count
+        self.info["dist_to_target"]  = float(np.linalg.norm(self.state - target))
+        self.info["bonus_collected"] = len(self.collected_bonus)
 
 
-# Run as a script (random agent demo):
-# --------------------------------------
+# ---------------------------------------------------------------------------
+# Quick random-agent demo
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     env = DeliveryRobotEnv()
-
-    print("Delivery Robot — 10x10 map")
-    print(f"Special cells: {len(WALL_CELLS)} walls, {len(DANGER_CELLS)} danger, "
-          f"{len(TELEPORT_PAIRS)} teleports, {len(TRAP_CELLS)} traps, "
+    print(f"Map: {GRID_SIZE}x{GRID_SIZE}  |  "
+          f"{len(WALL_CELLS)} walls, {len(DANGER_CELLS)} danger, "
           f"{len(BONUS_CELLS)} bonus, 1 package, 1 customer\n")
 
-    for episode in range(3):
+    for ep in range(3):
         obs, info = env.reset()
-        print(f"--- Episode {episode+1} ---")
         total = 0
         for _ in range(env.max_steps):
-            action = env.action_space.sample()
-            obs, done, reward, info = env.step(action)
+            obs, done, reward, info = env.step(env.action_space.sample())
             env.render()
             total += reward
             if done:
                 break
-        print(f"Total reward: {total:.2f}  |  Phase: {info['phase']}  |  "
-              f"Bonus: {info['bonus_collected']}\n")
-
+        print(f"Episode {ep+1}: reward={total:.2f}  phase={info['phase']}  "
+              f"bonus={info['bonus_collected']}")
     env.close()
