@@ -32,7 +32,6 @@
 # =============================================================================
 
 import sys
-import pygame
 import numpy as np
 import gymnasium as gym
 
@@ -59,13 +58,18 @@ START_CELL    = (0, 0)   # robot always starts here
 
 class DeliveryRobotEnv(gym.Env):
 
-    def __init__(self, random_start=False) -> None:
+    def __init__(self, random_start=False, headless=False) -> None:
+        """
+        headless=True skips all pygame setup — used by experiments.py so
+        training runs without opening a window, which is much faster.
+        """
         super().__init__()
 
         self.grid_size    = GRID_SIZE
-        self.cell_size    = 90          # pixels per cell in the pygame window
+        self.cell_size    = 90
         self.max_steps    = MAX_STEPS
         self.random_start = random_start
+        self.headless     = headless
 
         self.start    = np.array(START_CELL)
         self.package  = np.array(PACKAGE_CELL)
@@ -79,26 +83,28 @@ class DeliveryRobotEnv(gym.Env):
         # Episode state — initialised properly in reset()
         self.state           = None
         self.has_package     = False
-        self.collected_bonus = set()    # which bonus cells are already spent
+        self.collected_bonus = set()
         self.done            = False
         self.reward          = 0
         self.info            = {}
         self.step_count      = 0
 
-        self.action_space = gym.spaces.Discrete(4)   # Up Down Right Left
+        self.action_space = gym.spaces.Discrete(4)
         self.observation_space = gym.spaces.Box(
             low=np.array([0, 0, 0]),
             high=np.array([GRID_SIZE - 1, GRID_SIZE - 1, 1]),
             dtype=np.int32
         )
 
-        # pygame display
-        pygame.init()
-        side = self.cell_size * self.grid_size
-        self.screen     = pygame.display.set_mode((side, side))
-        self.font       = pygame.font.SysFont(None, 36)
-        self.font_small = pygame.font.SysFont(None, 22)
-        pygame.display.set_caption("Delivery Robot")
+        if not self.headless:
+            import pygame
+            self.pygame     = pygame
+            pygame.init()
+            side = self.cell_size * self.grid_size
+            self.screen     = pygame.display.set_mode((side, side))
+            self.font       = pygame.font.SysFont(None, 36)
+            self.font_small = pygame.font.SysFont(None, 22)
+            pygame.display.set_caption("Delivery Robot")
 
 
     # -----------------------------------------------------------------------
@@ -207,9 +213,12 @@ class DeliveryRobotEnv(gym.Env):
     # render  (pygame)
     # -----------------------------------------------------------------------
     def render(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
+        if self.headless:
+            return
+        pg = self.pygame
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                pg.quit()
                 sys.exit()
 
         self.screen.fill((245, 245, 245))
@@ -218,12 +227,12 @@ class DeliveryRobotEnv(gym.Env):
         # Grid lines
         for r in range(self.grid_size):
             for c in range(self.grid_size):
-                pygame.draw.rect(self.screen, (210, 210, 210),
-                                 pygame.Rect(c*cs, r*cs, cs, cs), 1)
+                pg.draw.rect(self.screen, (210, 210, 210),
+                             pg.Rect(c*cs, r*cs, cs, cs), 1)
 
         def draw_cell(row, col, color, label, text_color=(255,255,255)):
-            rect = pygame.Rect(col*cs, row*cs, cs, cs)
-            pygame.draw.rect(self.screen, color, rect)
+            rect = pg.Rect(col*cs, row*cs, cs, cs)
+            pg.draw.rect(self.screen, color, rect)
             surf = self.font.render(label, True, text_color)
             self.screen.blit(surf, surf.get_rect(center=rect.center))
 
@@ -260,20 +269,21 @@ class DeliveryRobotEnv(gym.Env):
         ]
         lx = 4
         for color, text in items:
-            pygame.draw.rect(self.screen, color, pygame.Rect(lx, cs*self.grid_size-20, 12, 12))
+            pg.draw.rect(self.screen, color, pg.Rect(lx, cs*self.grid_size-20, 12, 12))
             surf = self.font_small.render(text, True, (30,30,30))
             self.screen.blit(surf, (lx+15, cs*self.grid_size-22))
             lx += surf.get_width() + 28
 
-        pygame.time.wait(120)
-        pygame.display.flip()
+        pg.time.wait(120)
+        pg.display.flip()
 
 
     # -----------------------------------------------------------------------
     # close
     # -----------------------------------------------------------------------
     def close(self):
-        pygame.quit()
+        if not self.headless:
+            self.pygame.quit()
 
 
     # -----------------------------------------------------------------------

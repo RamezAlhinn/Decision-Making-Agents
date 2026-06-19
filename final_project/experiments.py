@@ -66,8 +66,8 @@ def smooth(rewards, window=SMOOTH_WIN):
 
 
 def make_agent(alpha, epsilon_decay):
-    """Helper — builds a fresh agent with the given hyperparameters."""
-    env = DeliveryRobotEnv(random_start=True)
+    """Helper — builds a fresh headless env + agent with the given hyperparameters."""
+    env = DeliveryRobotEnv(random_start=True, headless=True)
     agent = QLearningAgent(
         grid_size     = env.grid_size,
         n_actions     = env.action_space.n,
@@ -158,7 +158,7 @@ def run_experiment_A():
     plt.tight_layout()
     plt.savefig("experiment_A_epsilon.png", dpi=150, bbox_inches="tight")
     print("\nPlot saved → experiment_A_epsilon.png")
-    plt.show()
+    plt.close()
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +220,7 @@ def run_experiment_B():
     plt.tight_layout()
     plt.savefig("experiment_B_alpha.png", dpi=150, bbox_inches="tight")
     print("\nPlot saved → experiment_B_alpha.png")
-    plt.show()
+    plt.close()
 
 
 # ---------------------------------------------------------------------------

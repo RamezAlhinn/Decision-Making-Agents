@@ -237,7 +237,72 @@ A large α makes Q-values jump toward each new experience aggressively. A small 
 
 ---
 
-## 7. Project Structure
+## 7. Results and Analysis
+
+### Experiment A — Epsilon-Decay Strategy
+
+**Final average reward (last 1,000 episodes):**
+
+| Strategy | ε_decay | Final avg reward |
+|---|---|---|
+| Slow decay | 0.9998 | 25.38 |
+| Fast decay | 0.9990 | 27.43 |
+
+**What the plot shows:**
+
+Looking at the top panel, the fast decay agent (orange) shoots up to around +20 reward by episode 2,500 and stays there. The slow decay agent (blue) stays negative or near zero all the way until around episode 5,000, then climbs steadily and catches up by episode 10,000.
+
+The bottom panel explains exactly why: with fast decay, ε drops below 0.1 (mostly exploiting) before episode 3,000. With slow decay, ε is still around 0.4 at episode 5,000 — the agent is still taking random actions half the time.
+
+**Why fast decay won here:**
+
+This result is actually the opposite of the typical textbook expectation, and it's worth explaining why. The delivery map is relatively small (8×8, 128 states) and the rewards are clear — a random agent will stumble onto the package and customer fairly quickly just by chance. So the fast-decay agent finds a working path early and has plenty of episodes left to refine it. The slow-decay agent spends too many episodes still exploring randomly after it already found a decent policy.
+
+This tells us something important: **the right decay speed depends on the problem size**. In a larger, sparser environment, slow decay would win because you need more time to discover rewards that are harder to find. In this compact map, fast decay is the better choice.
+
+Both agents converge to essentially the same final performance (~25–27), confirming that the learned policy is similar — the difference is only in how quickly they get there.
+
+---
+
+### Experiment B — Learning Rate (Alpha)
+
+**Final average reward (last 1,000 episodes):**
+
+| Alpha | Description | Final avg reward |
+|---|---|---|
+| 0.01 | Small updates | 27.00 |
+| 0.1 | Balanced | 24.96 |
+| 0.5 | Large updates | 24.40 |
+
+**What the plot shows:**
+
+All three agents converge to roughly the same reward range (24–27) by the end, which makes sense — they are all learning the same environment. The interesting difference is in *how* they get there.
+
+α = 0.5 (red) jumps up fast in the first 2,000 episodes, reaching positive rewards quickly, but the curve is visibly noisier and has bigger dips throughout. Large updates mean a single bad episode (hitting danger, timing out) can swing the Q-values significantly and undo recent progress.
+
+α = 0.1 (green) has a moderate rise and a cleaner curve — the standard balance between learning speed and stability.
+
+α = 0.01 (blue) starts the slowest, staying negative longer than the others, but produces the smoothest curve of all three. Tiny updates mean the agent averages over many experiences rather than reacting to each one, which reduces noise. It ends up with the highest final average (27.00), which suggests that in a deterministic environment like this one, patience pays off — the slow, stable updates add up to a more consistent policy.
+
+**The key takeaway:**
+
+In a deterministic environment (same action always gives the same result), there is no noise in the transitions themselves. This means large α is actually a disadvantage — it overcorrects for nothing. Smaller α works well here because the environment is predictable and the agent benefits from gradual, accumulated updates. In a stochastic environment where outcomes vary, you would want a higher α so the agent can adapt to changing dynamics.
+
+---
+
+### Overall Conclusion
+
+Both experiments confirm that the agent successfully learns the delivery task — all configurations reach rewards around +24 to +27, well above the failure outcomes (−10 timeout, −15 danger). The Q-learning algorithm converged reliably across all settings tested.
+
+The experiments highlight two practical lessons:
+
+1. **Decay speed should match environment complexity.** Fast decay works well on small, clear maps. Larger or more complex environments need slower decay to give the agent enough time to explore.
+
+2. **Alpha should match environment stochasticity.** In deterministic environments, small α produces the most stable and consistent policy. In noisy environments, larger α allows faster adaptation.
+
+---
+
+## 8. Project Structure
 
 ```
 final_project/
