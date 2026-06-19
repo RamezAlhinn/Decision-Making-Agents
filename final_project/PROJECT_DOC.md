@@ -182,23 +182,86 @@ High Q-values near the goal confirm the agent has learned that being close to th
 
 ---
 
-## 6. Project Structure
+## 6. Experiments (`experiments.py`)
+
+Run with:
+
+```bash
+python experiments.py
+```
+
+This produces two figures and saves them as PNG files.
+
+---
+
+### Experiment A — Epsilon-Decay Strategy
+
+**What we compare:** Two epsilon-decay schedules with everything else held constant (α=0.1, γ=0.99).
+
+| Strategy | ε_decay | Behaviour |
+|---|---|---|
+| Slow decay | 0.9998 | ε stays high for ~10 000 episodes before reaching 0.05 |
+| Fast decay | 0.9990 | ε reaches 0.05 after ~3 000 episodes |
+
+**Why this is meaningful:** The decay schedule determines the *exploration-exploitation trade-off* over time. This is a central concept in reinforcement learning — the agent must balance discovering new paths (exploration) against following the best path it already knows (exploitation).
+
+**What the plot shows:**
+- The **top panel** shows the smoothed total reward per episode for each strategy.
+- The **bottom panel** shows how ε drops over time for each strategy, so you can see exactly when each agent transitions from exploring to exploiting.
+
+**Expected finding:** Slow decay reaches a higher reward earlier because the agent has more time to discover the package and the delivery route before it stops exploring. Fast decay may plateau at a lower reward if it commits to a suboptimal path too early.
+
+---
+
+### Experiment B — Learning Rate (Alpha)
+
+**What we compare:** Three values of α with everything else held constant (ε_decay=0.9995, γ=0.99).
+
+| Alpha | Characteristic |
+|---|---|
+| 0.01 | Very small updates — slow but stable convergence |
+| 0.1 | Balanced — standard starting point |
+| 0.5 | Large updates — fast early learning but noisy |
+
+**Why this is meaningful:** α directly controls the magnitude of the Bellman update:
+
+```
+Q(s,a)  ←  Q(s,a)  +  α · TD_error
+```
+
+A large α makes Q-values jump toward each new experience aggressively. A small α averages over many experiences. In a deterministic environment like this one, moderate α works best — too small is unnecessarily slow, too large causes oscillation.
+
+**What the plot shows:** Three smoothed reward curves on one graph. The curves reveal how fast each α learns and how stable it is once it converges.
+
+**Expected finding:** α=0.1 converges cleanly. α=0.01 shows a steady but slow rise that may still be climbing at episode 20 000. α=0.5 rises quickly but has a noisier curve, showing the instability of large updates.
+
+---
+
+## 7. Project Structure
 
 ```
 final_project/
-├── env.py          # The environment: grid, rewards, special states
-├── q_learning.py   # The agent: Q-table, Bellman update, visualizer
-├── main.py         # Entry point: set hyperparameters, run training
-└── q_table.npy     # Saved Q-table (written after training)
+├── env.py            # The environment: grid, rewards, special states
+├── q_learning.py     # The agent: Q-table, Bellman update, train, visualize
+├── main.py           # Train and visualize the final agent
+├── experiments.py    # Experiment A (ε-decay) and Experiment B (alpha)
+├── PROJECT_DOC.md    # This document
+└── q_table.npy       # Saved Q-table (written after training)
 ```
 
 ---
 
-## 7. How to Run
+## 8. How to Run
 
+**Train the final agent and show the policy plot:**
 ```bash
 cd final_project
 python main.py
 ```
 
-Set `do_train = True` to train from scratch, `do_train = False` to load a saved Q-table and only visualize.  Set `render_training = True` to watch the robot learn in real time (much slower).
+**Run the experiments and produce the comparison plots:**
+```bash
+python experiments.py
+```
+
+Set `do_train = True` in `main.py` to train from scratch, or `False` to load a saved Q-table and only visualize. Set `render_training = True` to watch the robot learn in real time (much slower).

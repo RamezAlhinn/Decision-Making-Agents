@@ -49,45 +49,50 @@ class QLearningAgent:
         print(f"Q-table loaded ← {path}")
 
 
+def _run_episode(env, agent, render=False):
+    """Run one episode and return the total reward."""
+    obs, _ = env.reset()
+    state  = tuple(obs)
+    total  = 0
+    while True:
+        action              = agent.select_action(state)
+        next_obs, done, reward, _ = env.step(action)
+        if render:
+            env.render()
+        agent.update(state, action, reward, tuple(next_obs))
+        state = tuple(next_obs)
+        total += reward
+        if done:
+            break
+    agent.decay_epsilon()
+    return total
+
+
 def train(env, agent, no_episodes, render=False):
     """
-    Run Q-learning for a fixed number of episodes and save the Q-table.
-    Prints a progress line every 1 000 episodes.
-
-    Note: DeliveryRobotEnv.step() returns (obs, done, reward, info) — the
-    done/reward order is non-standard, so we unpack accordingly.
+    Train for a fixed number of episodes, printing progress every 1 000.
+    Used by main.py for the final trained agent.
     """
     for episode in range(no_episodes):
-        obs, _ = env.reset()
-        state  = tuple(obs)         # (row, col, has_package)
-        total_reward = 0
-
-        while True:
-            action = agent.select_action(state)
-
-            next_obs, done, reward, _ = env.step(action)   # non-standard order!
-
-            if render:
-                env.render()
-
-            next_state    = tuple(next_obs)
-            agent.update(state, action, reward, next_state)
-
-            state        = next_state
-            total_reward += reward
-
-            if done:
-                break
-
-        agent.decay_epsilon()
-
+        total = _run_episode(env, agent, render)
         if (episode + 1) % 1000 == 0:
             print(f"Episode {episode + 1:>6} | "
-                  f"Reward: {total_reward:>8.2f} | "
+                  f"Reward: {total:>8.2f} | "
                   f"Epsilon: {agent.epsilon:.4f}")
-
     env.close()
     print("\nTraining complete.")
+
+
+def train_and_record(env, agent, no_episodes):
+    """
+    Same as train() but returns a list of per-episode total rewards.
+    Used by experiments.py to produce learning curves.
+    """
+    rewards = []
+    for _ in range(no_episodes):
+        rewards.append(_run_episode(env, agent))
+    env.close()
+    return rewards
 
 
 def visualize(agent, env):
