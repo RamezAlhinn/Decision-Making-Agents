@@ -1,3 +1,22 @@
+"""
+main.py — Train the Q-learning delivery robot and visualise the learned policy.
+
+How to run
+----------
+Train from scratch and save outputs::
+
+    cd project_a
+    python main.py
+
+To skip training and just regenerate the plots from a saved Q-table, set
+``do_train = False`` at the top of this file.  To watch the robot learn in
+real time (slow), set ``render_training = True``.
+
+Outputs written to project_a/
+    policy_plot.png   — greedy policy arrows + Q-value heatmap (2 phases)
+    q_table_plot.png  — full Q-table: Q(s,a) for every state-action pair
+    q_table.npy       — saved Q-table (numpy array, shape 8×8×2×4)
+"""
 from pathlib import Path
 from env import DeliveryRobotEnv
 from q_learning import QLearningAgent, train, visualize, visualize_q_table

@@ -87,6 +87,16 @@ def make_agent(alpha, epsilon_decay):
 # Experiment A — Epsilon-decay strategy comparison
 # ---------------------------------------------------------------------------
 def run_experiment_A():
+    """
+    Compare two epsilon-decay schedules (slow vs fast) with alpha=0.1 fixed.
+
+    Saves experiment_A_epsilon.png — two panels: smoothed reward curves (top)
+    and epsilon schedule over episodes (bottom).
+
+    Run directly via::
+
+        python experiments.py
+    """
     print("=" * 60)
     print("Experiment A: Epsilon-decay strategy")
     print("  Slow decay  ε_decay=0.9998   (α=0.1 fixed)")
@@ -168,6 +178,16 @@ def run_experiment_A():
 # Experiment B — Learning rate (alpha) comparison
 # ---------------------------------------------------------------------------
 def run_experiment_B():
+    """
+    Compare three learning rates (alpha=0.01, 0.1, 0.5) with epsilon_decay=0.9995 fixed.
+
+    Saves experiment_B_alpha.png — smoothed reward curves for all three alphas
+    on one graph with annotated arrows highlighting each curve's characteristic behaviour.
+
+    Run directly via::
+
+        python experiments.py
+    """
     print("\n" + "=" * 60)
     print("Experiment B: Learning rate (alpha)")
     print("  α = 0.01   α = 0.1   α = 0.5   (ε_decay=0.9995 fixed)")

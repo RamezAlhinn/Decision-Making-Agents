@@ -57,12 +57,34 @@ START_CELL    = (0, 0)   # robot always starts here
 
 
 class DeliveryRobotEnv(gym.Env):
+    """
+    8×8 delivery robot environment for tabular Q-learning.
+
+    How to run
+    ----------
+    Standalone demo (random agent, opens a pygame window)::
+
+        python env.py
+
+    From training code::
+
+        env = DeliveryRobotEnv(headless=True)   # no window — fast training
+        obs, info = env.reset()
+        obs, done, reward, info = env.step(action)
+        env.close()
+
+    Parameters
+    ----------
+    random_start : bool
+        If True the robot is placed at a random free cell each episode.
+        Used during experiments for better state coverage.
+    headless : bool
+        If True all pygame calls are skipped — required for experiment runs
+        where no display is available or speed is critical.
+    """
 
     def __init__(self, random_start=False, headless=False) -> None:
-        """
-        headless=True skips all pygame setup — used by experiments.py so
-        training runs without opening a window, which is much faster.
-        """
+        """Initialise grid layout, action/observation spaces, and pygame (if not headless)."""
         super().__init__()
 
         self.grid_size    = GRID_SIZE
@@ -111,6 +133,7 @@ class DeliveryRobotEnv(gym.Env):
     # reset
     # -----------------------------------------------------------------------
     def reset(self):
+        """Reset the episode and return the initial observation (obs, info)."""
         # Build the set of cells the robot cannot start on
         blocked = (
             {tuple(w) for w in self.wall_states}   |
@@ -142,6 +165,13 @@ class DeliveryRobotEnv(gym.Env):
     # step
     # -----------------------------------------------------------------------
     def step(self, action):
+        """
+        Apply action and return (obs, done, reward, info).
+
+        Action encoding: 0=Up, 1=Down, 2=Right, 3=Left.
+        Priority order: wall bump → danger → bonus → package pickup →
+        customer delivery → normal step → timeout.
+        """
         self.step_count += 1
 
         # 1. Compute intended next position
@@ -213,6 +243,7 @@ class DeliveryRobotEnv(gym.Env):
     # render  (pygame)
     # -----------------------------------------------------------------------
     def render(self):
+        """Draw the current grid state to the pygame window. No-op in headless mode."""
         if self.headless:
             return
         pg = self.pygame
@@ -282,6 +313,7 @@ class DeliveryRobotEnv(gym.Env):
     # close
     # -----------------------------------------------------------------------
     def close(self):
+        """Shut down the pygame window. Always call this after training is done."""
         if not self.headless:
             self.pygame.quit()
 
