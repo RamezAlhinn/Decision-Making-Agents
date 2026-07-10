@@ -2,7 +2,7 @@ from pathlib import Path
 from env import DeliveryRobotEnv
 from q_learning import QLearningAgent, train, visualize, visualize_q_table
 
-HERE = Path(__file__).parent   # always points to final_project/
+HERE = Path(__file__).parent   # always points to project_a/
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 do_train        = True

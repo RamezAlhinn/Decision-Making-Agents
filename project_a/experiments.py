@@ -53,7 +53,7 @@ import matplotlib.ticker as ticker
 from env import DeliveryRobotEnv
 from q_learning import QLearningAgent, train_and_record
 
-HERE = Path(__file__).parent   # always saves outputs into final_project/
+HERE = Path(__file__).parent   # always saves outputs into project_a/
 
 # ---------------------------------------------------------------------------
 # Shared settings — kept constant across ALL experiments

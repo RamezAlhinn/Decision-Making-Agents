@@ -305,7 +305,7 @@ The experiments highlight two practical lessons:
 ## 8. Project Structure
 
 ```
-final_project/
+project_a/
 ├── env.py            # The environment: grid, rewards, special states
 ├── q_learning.py     # The agent: Q-table, Bellman update, train, visualize
 ├── main.py           # Train and visualize the final agent
@@ -316,11 +316,11 @@ final_project/
 
 ---
 
-## 8. How to Run
+## 9. How to Run
 
 **Train the final agent and show the policy plot:**
 ```bash
-cd final_project
+cd project_a
 python main.py
 ```
 

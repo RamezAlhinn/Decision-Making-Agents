@@ -221,7 +221,7 @@ def visualize(agent, env, output_dir=None):
     path = out / "policy_plot.png"
     plt.savefig(path, dpi=150, bbox_inches="tight")
     print(f"Policy plot saved → {path}")
-    plt.show()
+    plt.close()
 
 
 def visualize_q_table(agent, env, output_dir=None):
@@ -349,9 +349,12 @@ def visualize_q_table(agent, env, output_dir=None):
     fig.legend(handles=legend_handles, loc="lower center", ncol=5,
                frameon=True, fontsize=9, bbox_to_anchor=(0.45, -0.02))
 
-    plt.tight_layout()
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        plt.tight_layout()
     out  = Path(output_dir) if output_dir else Path(__file__).parent
     path = out / "q_table_plot.png"
     plt.savefig(path, dpi=150, bbox_inches="tight")
     print(f"Q-table plot saved → {path}")
-    plt.show()
+    plt.close()
