@@ -222,3 +222,136 @@ def visualize(agent, env, output_dir=None):
     plt.savefig(path, dpi=150, bbox_inches="tight")
     print(f"Policy plot saved → {path}")
     plt.show()
+
+
+def visualize_q_table(agent, env, output_dir=None):
+    """
+    Full Q-table: 2 rows (phases) × 4 columns (actions) = 8 heatmaps.
+
+    Every cell in every panel shows the exact Q-value for that
+    state-action pair, satisfying the requirement to present Q-values
+    for ALL state-action pairs.
+
+    How to read it
+    --------------
+    - Rows    : Phase 1 (fetching package) on top, Phase 2 (delivering) below
+    - Columns : one per action — ↑ Up, ↓ Down, → Right, ← Left
+    - Colour  : darker blue = higher Q-value = more expected future reward
+    - Number  : the exact Q-value for that cell under that action
+    - The darkest panel for any given cell across the 4 columns shows
+      which action the agent prefers there (matches the arrow in policy_plot)
+    - Special cells are labelled so the map layout stays visible
+    """
+    from pathlib import Path
+    from matplotlib.patches import Patch
+
+    q_table       = agent.q_table          # (grid, grid, 2, 4)
+    grid_size     = q_table.shape[0]
+    action_labels = ["↑  Up", "↓  Down", "→  Right", "←  Left"]
+    phase_labels  = ["Phase 1 — Fetching Package", "Phase 2 — Delivering"]
+
+    package_rc  = tuple(env.package)
+    customer_rc = tuple(env.customer)
+    walls       = {tuple(w) for w in env.wall_states}
+    dangers     = {tuple(d) for d in env.danger_states}
+    bonuses     = {tuple(b) for b in env.bonus_states}
+    special     = walls | dangers | bonuses | {package_rc, customer_rc}
+
+    CELL_STYLE = {
+        "wall":     ((0.27, 0.27, 0.27), "W"),
+        "danger":   ((0.82, 0.20, 0.20), "X"),
+        "bonus":    ((0.00, 0.73, 0.76), "B"),
+        "package":  ((0.94, 0.78, 0.00), "P"),
+        "customer": ((0.20, 0.71, 0.20), "C"),
+    }
+
+    def cell_type(rc):
+        if rc in walls:       return "wall"
+        if rc in dangers:     return "danger"
+        if rc in bonuses:     return "bonus"
+        if rc == package_rc:  return "package"
+        if rc == customer_rc: return "customer"
+        return None
+
+    fig, axes = plt.subplots(2, 4, figsize=(18, 9))
+    fig.suptitle(
+        "Full Q-Table — Q(s, a) for Every State-Action Pair\n"
+        "Each panel = one action; darker blue = higher expected reward",
+        fontsize=13, fontweight="bold"
+    )
+
+    # Compute a shared vmin/vmax across all free cells so all 8 panels
+    # use the same colour scale and are directly comparable
+    free_mask = np.ones((grid_size, grid_size), dtype=bool)
+    for rc in special:
+        free_mask[rc] = False
+    all_free_vals = q_table[:, :, :, :][free_mask.reshape(grid_size, grid_size, 1, 1)
+                                         .repeat(2, axis=2).repeat(4, axis=3)]
+    vmin, vmax = all_free_vals.min(), all_free_vals.max()
+
+    for phase in range(2):
+        phase_q = q_table[:, :, phase, :]      # (grid, grid, 4)
+
+        for action in range(4):
+            ax      = axes[phase, action]
+            q_slice = phase_q[:, :, action]    # (grid, grid) — one action
+
+            mask = np.zeros((grid_size, grid_size), dtype=bool)
+            for rc in special:
+                mask[rc] = True
+
+            sns.heatmap(
+                q_slice, ax=ax, cmap="Blues", mask=mask,
+                cbar=False, linewidths=0.5, linecolor="lightgray",
+                vmin=vmin, vmax=vmax, annot=False
+            )
+
+            for row in range(grid_size):
+                for col in range(grid_size):
+                    rc  = (row, col)
+                    x, y = col + 0.5, row + 0.5
+                    ct  = cell_type(rc)
+
+                    if ct is not None:
+                        color, label = CELL_STYLE[ct]
+                        ax.add_patch(plt.Rectangle((col, row), 1, 1,
+                                                   color=color, zorder=2))
+                        ax.text(x, y, label, color="white", ha="center",
+                                va="center", fontsize=9,
+                                fontweight="bold", zorder=3)
+                    else:
+                        ax.text(x, y, f"{q_slice[row, col]:.1f}",
+                                color="black", ha="center", va="center",
+                                fontsize=7, zorder=3)
+
+            ax.set_title(action_labels[action], fontsize=10, pad=4)
+            ax.set_xlabel("Col", fontsize=7)
+            ax.tick_params(labelsize=7)
+            if action == 0:
+                ax.set_ylabel(f"{phase_labels[phase]}\nRow", fontsize=8)
+            else:
+                ax.set_ylabel("")
+
+    # Shared colourbar
+    sm = plt.cm.ScalarMappable(cmap="Blues",
+                               norm=plt.Normalize(vmin=vmin, vmax=vmax))
+    sm.set_array([])
+    fig.colorbar(sm, ax=axes, location="right", shrink=0.6,
+                 label="Q-value", pad=0.02)
+
+    legend_handles = [
+        Patch(color=(0.27, 0.27, 0.27), label="W  Wall"),
+        Patch(color=(0.82, 0.20, 0.20), label="X  Danger"),
+        Patch(color=(0.00, 0.73, 0.76), label="B  Bonus"),
+        Patch(color=(0.94, 0.78, 0.00), label="P  Package"),
+        Patch(color=(0.20, 0.71, 0.20), label="C  Customer"),
+    ]
+    fig.legend(handles=legend_handles, loc="lower center", ncol=5,
+               frameon=True, fontsize=9, bbox_to_anchor=(0.45, -0.02))
+
+    plt.tight_layout()
+    out  = Path(output_dir) if output_dir else Path(__file__).parent
+    path = out / "q_table_plot.png"
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    print(f"Q-table plot saved → {path}")
+    plt.show()

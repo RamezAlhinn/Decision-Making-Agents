@@ -1,6 +1,6 @@
 from pathlib import Path
 from env import DeliveryRobotEnv
-from q_learning import QLearningAgent, train, visualize
+from q_learning import QLearningAgent, train, visualize, visualize_q_table
 
 HERE = Path(__file__).parent   # always points to final_project/
 
@@ -41,5 +41,6 @@ else:
 
 if do_visualize:
     env = DeliveryRobotEnv()
-    visualize(agent, env, output_dir=HERE)
+    visualize(agent, env, output_dir=HERE)           # greedy policy plot
+    visualize_q_table(agent, env, output_dir=HERE)   # full Q-table plot
     env.close()
