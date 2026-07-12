@@ -97,14 +97,12 @@ class DeliveryRobotEnv(gym.Env):
         self.package  = np.array(PACKAGE_CELL)
         self.customer = np.array(CUSTOMER_CELL)
 
-        # Pre-convert to numpy arrays so step() can use np.array_equal directly
+        # Convert to numpy arrays once for fast comparison in step()
         self.wall_states   = [np.array(c) for c in WALL_CELLS]
         self.danger_states = [np.array(c) for c in DANGER_CELLS]
         self.bonus_states  = [np.array(c) for c in BONUS_CELLS]
 
-        # Episode state — set to real values in reset(), declared here so
-        # any accidental pre-reset access raises AttributeError rather than
-        # silently using a stale value from a previous episode.
+        # Episode state — reset() sets these to their real starting values
         self.state           = None
         self.has_package     = False
         self.collected_bonus = set()
@@ -187,55 +185,52 @@ class DeliveryRobotEnv(gym.Env):
         elif action == 3 and self.state[1] > 0:                     # Left
             next_pos[1] -= 1
 
-        # 2. Check for wall — robot stays in place and incurs a small penalty
+        # 2. Check for wall — robot stays in place with a small penalty
         hits_wall = any(np.array_equal(next_pos, w) for w in self.wall_states)
         if hits_wall:
             self.reward = -0.05
             self.done   = False
         else:
-            self.state = next_pos   # commit the move
+            self.state = next_pos
 
-            # 3. Evaluate the new cell — order matters: danger before bonus
-            #    so a bonus cell that was accidentally placed on a danger cell
-            #    would still end the episode (defensive ordering).
+            # 3. Evaluate the new cell
             if any(np.array_equal(self.state, d) for d in self.danger_states):
-                # Danger — episode ends immediately with a large penalty
+                # Danger — episode ends with a large penalty
                 self.reward = -15
                 self.done   = True
 
             elif any(np.array_equal(self.state, b) for b in self.bonus_states):
-                # Bonus — one-time reward; tracked per-episode in collected_bonus
+                # Bonus — first visit gives +3, later visits are normal steps
                 key = tuple(self.state)
                 if key not in self.collected_bonus:
                     self.collected_bonus.add(key)
                     self.reward = +3
                 else:
-                    self.reward = -0.01   # revisit costs a normal step
+                    self.reward = -0.01
                 self.done = False
 
             elif not self.has_package and np.array_equal(self.state, self.package):
-                # Package pickup — switches the agent to Phase 2
+                # Package pickup — start Phase 2
                 self.has_package = True
                 self.reward      = +5
                 self.done        = False
 
             elif self.has_package and np.array_equal(self.state, self.customer):
-                # Successful delivery — only terminal if the package is carried
+                # Successful delivery
                 self.reward = +20
                 self.done   = True
 
             elif not self.has_package and np.array_equal(self.state, self.customer):
-                # Visiting customer without the package — no reward, keep going
+                # Reached customer without the package — keep going
                 self.reward = -0.01
                 self.done   = False
 
             else:
-                # Normal traversal step
+                # Normal step
                 self.reward = -0.01
                 self.done   = False
 
-        # 4. Timeout — checked after cell evaluation so a delivery on the
-        #    last step still scores +20 rather than being overwritten by -10
+        # 4. Timeout
         if not self.done and self.step_count >= self.max_steps:
             self.reward = -10
             self.done   = True

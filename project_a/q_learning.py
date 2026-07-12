@@ -27,18 +27,14 @@ class QLearningAgent:
 
     def select_action(self, state):
         """Epsilon-greedy: explore randomly or exploit the best known action."""
-        # state must be a tuple of plain ints (row, col, has_package) — numpy
-        # ints/arrays also index correctly here, but keep it plain to avoid
-        # accidental fancy indexing if env.py's observation type ever changes.
+        # state is a tuple (row, col, has_package)
         if np.random.rand() < self.epsilon:
             return np.random.randint(self.q_table.shape[-1])  # Explore
         return int(np.argmax(self.q_table[state]))             # Exploit
 
     def update(self, state, action, reward, next_state):
         """Bellman update: move Q(s,a) toward the TD target."""
-        # max over next_state is what makes this Q-learning (off-policy):
-        # we assume optimal play from next_state onward, regardless of what
-        # the epsilon-greedy policy would actually choose there.
+        # max over next_state = off-policy (Q-learning, not SARSA)
         td_target = reward + self.gamma * np.max(self.q_table[next_state])
         td_error  = td_target - self.q_table[state][action]
         self.q_table[state][action] += self.alpha * td_error
@@ -65,14 +61,12 @@ def _run_episode(env, agent, render=False):
         next_obs, done, reward, _ = env.step(action)
         if render:
             env.render()
-        # Update before advancing state so we hold (s, a, r, s') together
         agent.update(state, action, reward, tuple(next_obs))
         state  = tuple(next_obs)
         total += reward
         if done:
             break
-    # Decay once per episode, not per step — keeps the schedule predictable
-    agent.decay_epsilon()
+    agent.decay_epsilon()  # once per episode
     return total
 
 
@@ -184,8 +178,7 @@ def visualize(agent, env, output_dir=None):
         for row in range(grid_size):
             for col in range(grid_size):
                 rc = (row, col)
-                # seaborn places cell (col, row) at pixel centre (col+0.5, row+0.5)
-                x, y = col + 0.5, row + 0.5
+                x, y = col + 0.5, row + 0.5  # cell centre in seaborn axes
                 ct = cell_type(rc)
 
                 if ct is not None:
@@ -289,14 +282,11 @@ def visualize_q_table(agent, env, output_dir=None):
         fontsize=13, fontweight="bold"
     )
 
-    # Build a shared colour scale from free cells only — special cells have
-    # Q-values of 0 (walls were never visited) or large negatives (danger),
-    # which would crush the scale and make free-cell differences invisible.
+    # Shared colour scale across all 8 panels, using free cells only
     free_mask = np.ones((grid_size, grid_size), dtype=bool)
     for rc in special:
         free_mask[rc] = False
-    all_free_vals = q_table[:, :, :, :][free_mask.reshape(grid_size, grid_size, 1, 1)
-                                         .repeat(2, axis=2).repeat(4, axis=3)]
+    all_free_vals = q_table[free_mask]   # boolean-indexes rows/cols, keeps (phase, action)
     vmin, vmax = all_free_vals.min(), all_free_vals.max()
 
     for phase in range(2):
@@ -306,7 +296,7 @@ def visualize_q_table(agent, env, output_dir=None):
             ax      = axes[phase, action]
             q_slice = phase_q[:, :, action]    # (grid, grid) — one action
 
-            # Mask special cells so seaborn leaves them white; we paint them manually
+            # Mask special cells — we paint them manually below
             mask = np.zeros((grid_size, grid_size), dtype=bool)
             for rc in special:
                 mask[rc] = True
@@ -338,13 +328,12 @@ def visualize_q_table(agent, env, output_dir=None):
             ax.set_title(action_labels[action], fontsize=10, pad=4)
             ax.set_xlabel("Col", fontsize=7)
             ax.tick_params(labelsize=7)
-            # Only the leftmost panel in each row gets a y-label to avoid clutter
-            if action == 0:
+            if action == 0:  # y-label on leftmost panel only
                 ax.set_ylabel(f"{phase_labels[phase]}\nRow", fontsize=8)
             else:
                 ax.set_ylabel("")
 
-    # Single shared colourbar on the right — same scale across all 8 panels
+    # Shared colourbar on the right
     sm = plt.cm.ScalarMappable(cmap="Blues",
                                norm=plt.Normalize(vmin=vmin, vmax=vmax))
     sm.set_array([])
