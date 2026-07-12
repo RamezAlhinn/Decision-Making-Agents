@@ -27,12 +27,18 @@ class QLearningAgent:
 
     def select_action(self, state):
         """Epsilon-greedy: explore randomly or exploit the best known action."""
+        # state must be a tuple of plain ints (row, col, has_package) — numpy
+        # ints/arrays also index correctly here, but keep it plain to avoid
+        # accidental fancy indexing if env.py's observation type ever changes.
         if np.random.rand() < self.epsilon:
             return np.random.randint(self.q_table.shape[-1])  # Explore
         return int(np.argmax(self.q_table[state]))             # Exploit
 
     def update(self, state, action, reward, next_state):
         """Bellman update: move Q(s,a) toward the TD target."""
+        # max over next_state is what makes this Q-learning (off-policy):
+        # we assume optimal play from next_state onward, regardless of what
+        # the epsilon-greedy policy would actually choose there.
         td_target = reward + self.gamma * np.max(self.q_table[next_state])
         td_error  = td_target - self.q_table[state][action]
         self.q_table[state][action] += self.alpha * td_error
@@ -55,15 +61,17 @@ def _run_episode(env, agent, render=False):
     state  = tuple(obs)
     total  = 0
     while True:
-        action              = agent.select_action(state)
+        action                    = agent.select_action(state)
         next_obs, done, reward, _ = env.step(action)
         if render:
             env.render()
+        # Update before advancing state so we hold (s, a, r, s') together
         agent.update(state, action, reward, tuple(next_obs))
-        state = tuple(next_obs)
+        state  = tuple(next_obs)
         total += reward
         if done:
             break
+    # Decay once per episode, not per step — keeps the schedule predictable
     agent.decay_epsilon()
     return total
 
@@ -113,9 +121,9 @@ def visualize(agent, env, output_dir=None):
     """
     from matplotlib.patches import Patch
 
-    q_table     = agent.q_table          # shape: (grid, grid, 2, 4)
-    grid_size   = q_table.shape[0]
-    arrows      = {0: "↑", 1: "↓", 2: "→", 3: "←"}
+    q_table   = agent.q_table          # shape: (grid, grid, 2, 4)
+    grid_size = q_table.shape[0]
+    arrows    = {0: "↑", 1: "↓", 2: "→", 3: "←"}
 
     package_rc  = tuple(env.package)
     customer_rc = tuple(env.customer)
@@ -155,11 +163,11 @@ def visualize(agent, env, output_dir=None):
     )
 
     for phase, ax in enumerate(axes):
-        phase_q   = q_table[:, :, phase, :]        # (grid, grid, 4)
-        best_act  = np.argmax(phase_q, axis=2)
-        best_q    = np.max(phase_q, axis=2)
+        phase_q  = q_table[:, :, phase, :]        # (grid, grid, 4)
+        best_act = np.argmax(phase_q, axis=2)      # greedy action per cell
+        best_q   = np.max(phase_q, axis=2)         # value of that action
 
-        # Mask special cells from the heatmap colouring
+        # Mask special cells so their Q-values don't skew the colour scale
         mask = np.zeros((grid_size, grid_size), dtype=bool)
         for rc in special:
             mask[rc] = True
@@ -176,6 +184,7 @@ def visualize(agent, env, output_dir=None):
         for row in range(grid_size):
             for col in range(grid_size):
                 rc = (row, col)
+                # seaborn places cell (col, row) at pixel centre (col+0.5, row+0.5)
                 x, y = col + 0.5, row + 0.5
                 ct = cell_type(rc)
 
@@ -186,7 +195,7 @@ def visualize(agent, env, output_dir=None):
                     ax.text(x, y, label, color=tc, ha="center", va="center",
                             fontsize=13, fontweight="bold", zorder=3)
                 else:
-                    # Arrow (large, centred) + Q-value (small, below)
+                    # Arrow (large, centred) + Q-value (small, nudged down)
                     ax.text(x, y - 0.12, arrows[best_act[row, col]],
                             color="black", ha="center", va="center",
                             fontsize=16, fontweight="bold", zorder=3)
@@ -199,7 +208,7 @@ def visualize(agent, env, output_dir=None):
         ax.set_ylabel("Row", fontsize=9)
         ax.tick_params(labelsize=8)
 
-    # Legend in its own clearly separated row below both plots
+    # Legend sits below both plots so it doesn't crowd the grids
     legend_handles = [
         Patch(color=(0.27, 0.27, 0.27), label="W  Wall — movement blocked (−0.05)"),
         Patch(color=(0.82, 0.20, 0.20), label="X  Danger — episode ends (−15)"),
@@ -217,7 +226,7 @@ def visualize(agent, env, output_dir=None):
 
     plt.tight_layout()
     from pathlib import Path
-    out = Path(output_dir) if output_dir else Path(__file__).parent
+    out  = Path(output_dir) if output_dir else Path(__file__).parent
     path = out / "policy_plot.png"
     plt.savefig(path, dpi=150, bbox_inches="tight")
     print(f"Policy plot saved → {path}")
@@ -280,8 +289,9 @@ def visualize_q_table(agent, env, output_dir=None):
         fontsize=13, fontweight="bold"
     )
 
-    # Compute a shared vmin/vmax across all free cells so all 8 panels
-    # use the same colour scale and are directly comparable
+    # Build a shared colour scale from free cells only — special cells have
+    # Q-values of 0 (walls were never visited) or large negatives (danger),
+    # which would crush the scale and make free-cell differences invisible.
     free_mask = np.ones((grid_size, grid_size), dtype=bool)
     for rc in special:
         free_mask[rc] = False
@@ -296,6 +306,7 @@ def visualize_q_table(agent, env, output_dir=None):
             ax      = axes[phase, action]
             q_slice = phase_q[:, :, action]    # (grid, grid) — one action
 
+            # Mask special cells so seaborn leaves them white; we paint them manually
             mask = np.zeros((grid_size, grid_size), dtype=bool)
             for rc in special:
                 mask[rc] = True
@@ -308,9 +319,9 @@ def visualize_q_table(agent, env, output_dir=None):
 
             for row in range(grid_size):
                 for col in range(grid_size):
-                    rc  = (row, col)
+                    rc   = (row, col)
                     x, y = col + 0.5, row + 0.5
-                    ct  = cell_type(rc)
+                    ct   = cell_type(rc)
 
                     if ct is not None:
                         color, label = CELL_STYLE[ct]
@@ -327,12 +338,13 @@ def visualize_q_table(agent, env, output_dir=None):
             ax.set_title(action_labels[action], fontsize=10, pad=4)
             ax.set_xlabel("Col", fontsize=7)
             ax.tick_params(labelsize=7)
+            # Only the leftmost panel in each row gets a y-label to avoid clutter
             if action == 0:
                 ax.set_ylabel(f"{phase_labels[phase]}\nRow", fontsize=8)
             else:
                 ax.set_ylabel("")
 
-    # Shared colourbar
+    # Single shared colourbar on the right — same scale across all 8 panels
     sm = plt.cm.ScalarMappable(cmap="Blues",
                                norm=plt.Normalize(vmin=vmin, vmax=vmax))
     sm.set_array([])
@@ -349,6 +361,7 @@ def visualize_q_table(agent, env, output_dir=None):
     fig.legend(handles=legend_handles, loc="lower center", ncol=5,
                frameon=True, fontsize=9, bbox_to_anchor=(0.45, -0.02))
 
+    # tight_layout warns about the colorbar axes — suppress, output is correct
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
