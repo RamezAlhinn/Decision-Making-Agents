@@ -2,6 +2,9 @@
 # dqn.py — Deep Q-Network agent for the ContinuousMazeEnv
 # =============================================================================
 #
+# Library module — not run directly. Used by main.py (train), evaluate.py
+# (test mode), and experiments.py (tuning). See those files for how to run.
+#
 # The environment (env.py) has a continuous 2D state (x, y in [0,1]) and a
 # discrete action space (4 directions), so a tabular Q-table is not a good
 # fit — states never repeat exactly. Instead we approximate Q(s, a) with a

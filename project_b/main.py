@@ -12,8 +12,13 @@ To skip training and just regenerate the plots/GIF from a saved network, set
 ``do_train = False`` at the top of this file. To watch the agent during
 training (much slower), set ``render_training = True``.
 
+For the exam demo (load trained weights, no training), use evaluate.py
+instead — it is the dedicated test-mode entry point::
+
+    python evaluate.py --episodes 10
+
 Outputs written to project_b/
-    dqn_model.pt        — trained Q-network weights (best checkpoint)
+    dqn_model.pth       — trained Q-network weights (best checkpoint)
     training_curve.png  — episodes vs total reward + success rate
     solution.gif        — greedy agent navigating from start to goal
 """
@@ -47,7 +52,7 @@ do_plot         = True
 do_gif          = True
 render_training = False   # Set True to watch the agent during training (slow)
 
-model_path = HERE / "dqn_model.pt"
+model_path = HERE / "dqn_model.pth"
 
 # ── Hyperparameters ───────────────────────────────────────────────────────────
 n_episodes    = 3_000

@@ -2,6 +2,9 @@
 # train.py — training loop + reward shaping wrapper for the DQN agent
 # =============================================================================
 #
+# Library module — not run directly. Used by main.py (train) and
+# experiments.py (tuning). See those files for how to run.
+#
 # The provided ContinuousMazeEnv (env.py) is intentionally sparse: every
 # non-terminal step gives reward 0, hitting a wall gives -1, entering a
 # danger zone gives -100 and ends the episode, and reaching the goal gives

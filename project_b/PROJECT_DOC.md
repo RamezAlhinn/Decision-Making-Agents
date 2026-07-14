@@ -289,10 +289,10 @@ project_b/
 ├── dqn.py             # QNetwork, ReplayBuffer, DQNAgent (Huber + grad clip)
 ├── train.py           # ShapedMazeEnv wrapper (waypoint shaping), training loop
 ├── main.py            # Train the final agent; saves model, curve, GIF
-├── evaluate.py        # Load a saved model, record a greedy episode as GIF
+├── evaluate.py        # TEST MODE — load dqn_model.pth, run greedy episode(s)
 ├── experiments.py     # Experiment A (architecture) and B (learning rate)
 ├── PROJECT_DOC.md     # This document
-├── dqn_model.pt       # Trained Q-network weights (written by main.py)
+├── dqn_model.pth      # Trained Q-network weights (written by main.py)
 ├── training_curve.png # Episodes vs reward + success rate (written by main.py)
 ├── solution.gif       # Greedy agent reaching the goal (written by main.py)
 ├── experiment_A_architecture.png   # (written by experiments.py)
@@ -301,17 +301,21 @@ project_b/
 
 ## 9. How to run
 
-**Train the final agent, save the training curve and the solution GIF:**
+**Test mode (exam demo) — load the trained weights, no training:**
 
 ```bash
 cd project_b
-python main.py
+python evaluate.py                # 1 greedy episode, saves solution.gif
+python evaluate.py --episodes 10  # run 10 episodes, print success rate
 ```
 
-**Re-generate the GIF from the saved model without retraining:**
+Loads `dqn_model.pth` and runs the greedy policy only — this is what should
+be run live to demonstrate the final solution.
+
+**Train the final agent from scratch, save the training curve and the model:**
 
 ```bash
-python evaluate.py
+python main.py
 ```
 
 **Run the two tuning experiments:**
